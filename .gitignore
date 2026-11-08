@@ -14,3 +14,5 @@ build_log.txt
 *.jks
 *.keystore
 google-services.json
+testdata/
+app/src/androidTest/assets/

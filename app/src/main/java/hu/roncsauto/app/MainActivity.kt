@@ -200,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.execute {
             var failure: Throwable? = null
             val bitmap = try {
-                PhotoDecoder.decode(contentResolver, uri, MAX_PHOTO_EDGE)
+                PhotoDecoder.decode(contentResolver, uri, PlateOcr.OCR_EDGE)
             } catch (e: OutOfMemoryError) {
                 Log.e(TAG, "Vehicle photo too large: $uri", e)
                 failure = e
@@ -227,7 +227,12 @@ class MainActivity : AppCompatActivity() {
             try {
                 val dest = sharedPhotoFile()
                 val temp = File(dest.parentFile, dest.name + ".tmp")
-                PhotoDecoder.saveJpeg(bitmap, temp, JPEG_QUALITY)
+                val stored = PhotoDecoder.scaleCopy(bitmap, MAX_PHOTO_EDGE)
+                try {
+                    PhotoDecoder.saveJpeg(stored, temp, JPEG_QUALITY)
+                } finally {
+                    if (stored !== bitmap) stored.recycle()
+                }
                 if (!temp.renameTo(dest)) {
                     temp.copyTo(dest, overwrite = true)
                     temp.delete()
