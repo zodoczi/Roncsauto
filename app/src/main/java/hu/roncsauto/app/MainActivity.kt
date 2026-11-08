@@ -26,6 +26,9 @@ import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
+import android.util.Size
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -35,6 +38,8 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import hu.roncsauto.app.databinding.ActivityMainBinding
 import hu.roncsauto.app.inspection.InspectionExpiry
+import hu.roncsauto.app.inspection.JszpVehicle
+import hu.roncsauto.app.ocr.PlateOcr
 import hu.roncsauto.app.photo.PhotoDecoder
 import hu.roncsauto.app.plate.HungarianPlate
 import hu.roncsauto.app.report.HandoffText
@@ -49,9 +54,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+    private val plateOcr by lazy { PlateOcr(recognizer) }
 
     private var currentPlate: String? = null
     private var confirmedExpiry: LocalDate? = null
+    private var confirmedVehicle: String? = null
+    private var lastWeakCameraPlate: String? = null
 
     @Volatile
     private var photoMode = false
@@ -94,12 +102,16 @@ class MainActivity : AppCompatActivity() {
             runCatching { LocalDate.parse(it) }.getOrNull()
         }
         photoMode = savedInstanceState?.getBoolean(KEY_PHOTO_MODE) == true
+        confirmedVehicle = savedInstanceState?.getString(KEY_VEHICLE)
         if (currentPlate == null) confirmedExpiry = null
+        if (confirmedExpiry == null) confirmedVehicle = null
 
         binding.btnPickPhoto.setOnClickListener {
             pickVehiclePhoto.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
         binding.btnCamera.setOnClickListener { showCamera() }
+        binding.btnManual.setOnClickListener { showManualPlateDialog() }
+        binding.tvPlate.setOnClickListener { showManualPlateDialog() }
         binding.btnJszp.setOnClickListener { openJszp() }
         binding.btnInspection.setOnClickListener { showInspectionDialog() }
         binding.btnJarokelo.setOnClickListener { showJarokeloDialog() }
@@ -121,6 +133,7 @@ class MainActivity : AppCompatActivity() {
         super.onSaveInstanceState(outState)
         outState.putString(KEY_PLATE, currentPlate)
         outState.putString(KEY_EXPIRY, confirmedExpiry?.toString())
+        outState.putString(KEY_VEHICLE, confirmedVehicle)
         outState.putBoolean(KEY_PHOTO_MODE, photoMode)
     }
 
@@ -145,6 +158,17 @@ class MainActivity : AppCompatActivity() {
             }
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                // Az alapértelmezett 640×480 mellett a távoli rendszám csak néhány pixel magas.
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                Size(1920, 1080),
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                            )
+                        )
+                        .build()
+                )
                 .build()
                 .also { it.setAnalyzer(cameraExecutor, PlateAnalyzer()) }
             try {
@@ -176,7 +200,7 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.execute {
             var failure: Throwable? = null
             val bitmap = try {
-                PhotoDecoder.decode(contentResolver, uri, MAX_PHOTO_EDGE)
+                PhotoDecoder.decode(contentResolver, uri, PlateOcr.OCR_EDGE)
             } catch (e: OutOfMemoryError) {
                 Log.e(TAG, "Vehicle photo too large: $uri", e)
                 failure = e
@@ -203,7 +227,12 @@ class MainActivity : AppCompatActivity() {
             try {
                 val dest = sharedPhotoFile()
                 val temp = File(dest.parentFile, dest.name + ".tmp")
-                PhotoDecoder.saveJpeg(bitmap, temp, JPEG_QUALITY)
+                val stored = PhotoDecoder.scaleCopy(bitmap, MAX_PHOTO_EDGE)
+                try {
+                    PhotoDecoder.saveJpeg(stored, temp, JPEG_QUALITY)
+                } finally {
+                    if (stored !== bitmap) stored.recycle()
+                }
                 if (!temp.renameTo(dest)) {
                     temp.copyTo(dest, overwrite = true)
                     temp.delete()
@@ -220,25 +249,28 @@ class MainActivity : AppCompatActivity() {
                 }
                 return@execute
             }
-            val image = InputImage.fromBitmap(bitmap, 0)
-            var foundPlate: String? = null
-            recognizer.process(image)
-                .addOnSuccessListener { vision ->
-                    foundPlate = HungarianPlate.findBest(vision.text)?.canonical
+            onUi { toast("Rendszám keresése a fotón…") }
+            val foundPlate = try {
+                plateOcr.find(bitmap) { isDestroyed || generation != photoGeneration }?.canonical
+            } catch (e: Exception) {
+                Log.e(TAG, "Plate OCR failed", e)
+                null
+            }
+            if (isDestroyed || generation != photoGeneration) {
+                if (!bitmap.isRecycled) bitmap.recycle()
+                return@execute
+            }
+            val display = PhotoDecoder.scaleCopy(bitmap, DISPLAY_EDGE)
+            if (display != bitmap && !bitmap.isRecycled) bitmap.recycle()
+            onUi {
+                showBitmap(display)
+                updatePlate(foundPlate, allowClear = true)
+                if (foundPlate == null) {
+                    toast("A fotón nem találtam rendszámot. Írd be a „Kézzel” gombbal.")
+                } else {
+                    toast("Felismert rendszám: $foundPlate. Ha hibás, javítsd a „Kézzel” gombbal.")
                 }
-                .addOnCompleteListener {
-                    if (isDestroyed || generation != photoGeneration) {
-                        if (!bitmap.isRecycled) bitmap.recycle()
-                        return@addOnCompleteListener
-                    }
-                    val display = PhotoDecoder.scaleCopy(bitmap, DISPLAY_EDGE)
-                    if (display != bitmap && !bitmap.isRecycled) bitmap.recycle()
-                    onUi {
-                        showBitmap(display)
-                        updatePlate(foundPlate, allowClear = true)
-                        if (foundPlate == null) toast("A fotón nem találtam rendszámot.")
-                    }
-                }
+            }
         }
     }
 
@@ -271,6 +303,7 @@ class MainActivity : AppCompatActivity() {
         val resolved = newPlate?.let { HungarianPlate.findBest(it)?.canonical }
         if (resolved == null && !allowClear) return
         confirmedExpiry = InspectionExpiry.retainForPlate(currentPlate, resolved, confirmedExpiry)
+        if (confirmedExpiry == null) confirmedVehicle = null
         currentPlate = resolved
         refreshLabels()
     }
@@ -297,6 +330,38 @@ class MainActivity : AppCompatActivity() {
         copyText(plate)
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HandoffText.JSZP_URL)))
         toast("Rendszám a vágólapon. Belépés és lekérdezés a JSZP-n történik.")
+    }
+
+    private fun showManualPlateDialog() {
+        val input = EditText(this).apply {
+            hint = "pl. IUX-868 vagy AA BC-123"
+            setText(currentPlate ?: "")
+            setSingleLine()
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
+        }
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), 0)
+            addView(input, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle("Rendszám kézzel")
+            .setView(container)
+            .setPositiveButton("Mentés", null)
+            .setNegativeButton("Mégse", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val typed = HungarianPlate.findBest(input.text.toString())
+                if (typed == null) {
+                    toast("Nem érvényes rendszám. Példa: IUX-868 vagy AA BC-123.")
+                } else {
+                    updatePlate(typed.canonical, allowClear = false)
+                    dialog.dismiss()
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun showInspectionDialog() {
@@ -336,7 +401,7 @@ class MainActivity : AppCompatActivity() {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
                 val parsed = InspectionExpiry.analyze(input.text.toString(), plate, LocalDate.now())
                 dialog.dismiss()
-                confirmInspection(parsed, "Beillesztett szöveg, nem a JSZP válasza.\n\n", plate)
+                confirmInspection(parsed, "Beillesztett szöveg, nem a JSZP válasza.\n\n", plate, JszpVehicle.describe(input.text.toString()))
             }
             dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
                 dialog.dismiss()
@@ -381,7 +446,7 @@ class MainActivity : AppCompatActivity() {
                             toast("Nincs kiválasztott rendszám.")
                         } else {
                             val parsed = InspectionExpiry.analyze(text, plate, LocalDate.now())
-                            confirmInspection(parsed, "Képernyőképről felismert szöveg, nem a JSZP válasza.\n\n", plate)
+                            confirmInspection(parsed, "Képernyőképről felismert szöveg, nem a JSZP válasza.\n\n", plate, JszpVehicle.describe(text))
                         }
                     }
                 }
@@ -392,16 +457,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun confirmInspection(result: InspectionExpiry.Result, prefix: String, plate: String) {
+    private fun confirmInspection(result: InspectionExpiry.Result, prefix: String, plate: String, vehicle: String?) {
+        val vehicleLine = if (vehicle != null) "\n\nJármű: $vehicle" else ""
         val builder = MaterialAlertDialogBuilder(this)
             .setTitle("Műszaki dátum")
-            .setMessage(prefix + result.summary)
+            .setMessage(prefix + result.summary + vehicleLine)
             .setNegativeButton("Mégse", null)
         if (result.canApply && result.date != null) {
             builder.setPositiveButton("Megerősítem") { _, _ ->
                 val stillSame = currentPlate != null && HungarianPlate.same(currentPlate!!, plate)
                 if (stillSame) {
                     confirmedExpiry = result.date
+                    confirmedVehicle = vehicle
                     refreshLabels()
                 } else {
                     toast("A rendszám közben megváltozott, a dátumot nem veszem át.")
@@ -415,7 +482,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showJarokeloDialog() {
         val plate = currentPlate ?: return
-        val report = ReportText.build(plate, confirmedExpiry, LocalDate.now())
+        val report = ReportText.build(plate, confirmedExpiry, LocalDate.now(), confirmedVehicle)
         copyText(report)
         val hasPhoto = sharedPhotoFile().exists()
         val box = LinearLayout(this).apply {
@@ -518,7 +585,15 @@ class MainActivity : AppCompatActivity() {
             val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
             recognizer.process(image)
                 .addOnSuccessListener { vision ->
-                    val plate = HungarianPlate.findBest(vision.text)?.canonical
+                    val match = HungarianPlate.findBest(vision.text)
+                    // Bizonytalan (tűrő) olvasatot csak két egymás utáni egyező képkocka után fogadunk el.
+                    val plate = when {
+                        match == null -> null
+                        match.score >= TRUSTED_CAMERA_SCORE -> match.canonical
+                        match.compact == lastWeakCameraPlate -> match.canonical
+                        else -> null
+                    }
+                    lastWeakCameraPlate = match?.compact
                     if (!photoMode && plate != null) {
                         runOnUiThread {
                             if (!photoMode) updatePlate(plate, allowClear = false)
@@ -537,8 +612,10 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG = "RoncsAuto"
+        private const val TRUSTED_CAMERA_SCORE = 30
         private const val KEY_PLATE = "plate"
         private const val KEY_EXPIRY = "expiry"
+        private const val KEY_VEHICLE = "vehicle"
         private const val KEY_PHOTO_MODE = "photoMode"
         private const val MAX_PHOTO_EDGE = 2048
         private const val DISPLAY_EDGE = 1280

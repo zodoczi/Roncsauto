@@ -74,4 +74,58 @@ class HungarianPlateTest {
         val plates = HungarianPlate.findAll("ABC-123 és BB CD-999").map { it.canonical }
         assertEquals(listOf("ABC-123", "BB CD-999"), plates)
     }
+
+    private fun best(text: String) = HungarianPlate.findBest(text)?.canonical
+
+    @Test
+    fun iuxPlateFromTwingoPhotoVariants() {
+        // Zoli tesztfotója (JSZP: IUX868): régi tábla, bal oldalt EU-sáv "H" betűvel.
+        for (raw in listOf(
+            "H IUX-868", "HIUX-868", "HIUX868", "IUX-868", "IUX 868", "IUX·868", "IUX868",
+            "IUX-B68", "IUX-86B", "IUX-8G8", "1UX-868", "H\nIUX\n-868", "IUX\n868",
+            "RENAULT\nH IUX-B68\nTwingo", "H | IUX - 868",
+            // Valódi ML Kit-kimenetek nyírással kiegyenesített kivágásról (emulátor):
+            "IUX868", "FIUX-868", "EIUX-&68"
+        )) {
+            assertEquals(raw, "IUX-868", best(raw))
+        }
+    }
+
+    @Test
+    fun doesNotSwapLettersForLetters() {
+        // I és L is betű: nem cseréljük egymásra, a valódi tábla döntsön.
+        assertEquals("LUX-868", best("LUX-868"))
+        assertEquals("IUX-868", best("IUX-868"))
+        assertEquals("LUX-868", best("HLUX-868"))
+    }
+
+    @Test
+    fun newFormatTolerant() {
+        assertEquals("AA BC-123", best("AA BC-123"))
+        assertEquals("AA BC-123", best("AABC-I23"))
+        assertEquals("AA BC-123", best("H AA BC-123"))
+        assertEquals("AA BC-123", best("AA\nBC\n-123"))
+    }
+
+    @Test
+    fun tolerantDoesNotInventPlatesFromNoise() {
+        assertNull(best("RENAULT TWINGO"))
+        assertNull(best("ABCD-12"))
+        assertNull(best("IUX-BBB"))
+        assertNull(best("12:45 4G 87%"))
+        // Valódi ML Kit-kimenet az emulátoron a tesztfotó állapotsoráról:
+        assertNull(best("22:58 OX\n1,90\nKB/mp"))
+        assertNull(best("1,90\nKB/mp\nl06% •"))
+        assertNull(best("1,90\nKB/mp\n*lO76%"))
+        assertNull(best("22:58\n1,90\nKB/mp llO76% e"))
+        assertNull(best("22:58\n1,90\nKB/mp\nBl076%"))
+        assertNull(best("MP\nllO76"))
+    }
+
+    @Test
+    fun fixPatternLimitsCorrections() {
+        assertEquals("IUX868" to 1, HungarianPlate.fixPattern("IUXB68", "LLLDDD"))
+        assertNull(HungarianPlate.fixPattern("IUXBBB", "LLLDDD"))
+        assertNull(HungarianPlate.fixPattern("IU#868", "LLLDDD"))
+    }
 }
