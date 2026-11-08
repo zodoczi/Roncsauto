@@ -15,4 +15,18 @@ object BitmapScale {
         }
         return size
     }
+
+    /**
+     * Célméret az ImageDecoderhez: a hosszabb oldal legfeljebb [maxEdge] lesz, az arány megmarad.
+     * Null, ha nem kell kicsinyíteni.
+     */
+    fun targetSize(width: Int, height: Int, maxEdge: Int): Pair<Int, Int>? {
+        if (width <= 0 || height <= 0 || maxEdge <= 0) return null
+        val longest = maxOf(width, height)
+        if (longest <= maxEdge) return null
+        val scale = maxEdge.toDouble() / longest.toDouble()
+        val w = Math.round(width * scale).toInt().coerceIn(1, maxEdge)
+        val h = Math.round(height * scale).toInt().coerceIn(1, maxEdge)
+        return w to h
+    }
 }
