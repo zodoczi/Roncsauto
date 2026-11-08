@@ -9,6 +9,7 @@ import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
@@ -154,8 +155,9 @@ class MainActivity : AppCompatActivity() {
                     preview,
                     analysis
                 )
-            } catch (_: Exception) {
-                toast("A kamera nem indult el.")
+            } catch (e: Exception) {
+                Log.e(TAG, "Camera bind failed", e)
+                toast("A kamera nem indult el (${e.javaClass.simpleName}).")
             }
         }, ContextCompat.getMainExecutor(this))
     }
@@ -172,19 +174,27 @@ class MainActivity : AppCompatActivity() {
         photoMode = true
         stopCamera()
         cameraExecutor.execute {
+            var failure: Throwable? = null
             val bitmap = try {
                 PhotoDecoder.decode(contentResolver, uri, MAX_PHOTO_EDGE)
-            } catch (_: OutOfMemoryError) {
-                onUi { toast("A fotó túl nagy.") }
+            } catch (e: OutOfMemoryError) {
+                Log.e(TAG, "Vehicle photo too large: $uri", e)
+                failure = e
                 null
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Vehicle photo decode failed: $uri", e)
+                failure = e
                 null
             }
             if (bitmap == null) {
                 onUi {
                     if (generation == photoGeneration) {
                         photoMode = false
-                        toast("A fotó nem nyitható meg.")
+                        hideStillPhoto()
+                        toast(
+                            if (failure is OutOfMemoryError) "A fotó túl nagy."
+                            else "A fotó nem nyitható meg (${failure?.javaClass?.simpleName})."
+                        )
                         if (cameraGranted()) startCamera()
                     }
                 }
@@ -198,7 +208,8 @@ class MainActivity : AppCompatActivity() {
                     temp.copyTo(dest, overwrite = true)
                     temp.delete()
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Saving vehicle photo failed", e)
                 bitmap.recycle()
                 onUi {
                     if (generation == photoGeneration) {
@@ -346,14 +357,16 @@ class MainActivity : AppCompatActivity() {
         cameraExecutor.execute {
             val bitmap = try {
                 PhotoDecoder.decode(contentResolver, uri, MAX_PHOTO_EDGE)
-            } catch (_: OutOfMemoryError) {
+            } catch (e: OutOfMemoryError) {
+                Log.e(TAG, "Inspection screenshot too large: $uri", e)
                 onUi { toast("A kép túl nagy.") }
                 null
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Inspection screenshot decode failed: $uri", e)
+                onUi { toast("A képernyőkép nem nyitható meg (${e.javaClass.simpleName}).") }
                 null
             }
             if (bitmap == null) {
-                onUi { toast("A képernyőkép nem nyitható meg.") }
                 return@execute
             }
             val image = InputImage.fromBitmap(bitmap, 0)
@@ -523,6 +536,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "RoncsAuto"
         private const val KEY_PLATE = "plate"
         private const val KEY_EXPIRY = "expiry"
         private const val KEY_PHOTO_MODE = "photoMode"

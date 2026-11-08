@@ -3,21 +3,62 @@ package hu.roncsauto.app.photo
 import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
 import android.graphics.Matrix
 import android.net.Uri
+import android.os.Build
+import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.exifinterface.media.ExifInterface
 import java.io.BufferedInputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.io.IOException
 
 object PhotoDecoder {
 
-    fun decode(resolver: ContentResolver, uri: Uri, maxEdge: Int): Bitmap? {
+    /**
+     * Megnyitja a kiválasztott képet. Hibánál kivételt dob (soha nem ad vissza null-t),
+     * hogy a hívó a valódi okot naplózhassa.
+     */
+    fun decode(resolver: ContentResolver, uri: Uri, maxEdge: Int): Bitmap {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                return decodeWithImageDecoder(resolver, uri, maxEdge)
+            } catch (e: OutOfMemoryError) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "ImageDecoder failed for $uri, falling back to BitmapFactory", e)
+            }
+        }
+        return decodeWithBitmapFactory(resolver, uri, maxEdge)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun decodeWithImageDecoder(resolver: ContentResolver, uri: Uri, maxEdge: Int): Bitmap {
+        val source = ImageDecoder.createSource(resolver, uri)
+        // Az ImageDecoder a HEIC/HEIF képeket és az EXIF-forgatást is kezeli.
+        val bitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
+            decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.isMutableRequired = false
+            val target = BitmapScale.targetSize(info.size.width, info.size.height, maxEdge)
+            if (target != null) decoder.setTargetSize(target.first, target.second)
+        }
+        return limitEdge(bitmap, maxEdge)
+    }
+
+    private fun decodeWithBitmapFactory(resolver: ContentResolver, uri: Uri, maxEdge: Int): Bitmap {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { stream ->
+        // Méretlekérdezésnél a decodeStream mindig null-t ad, ezért az eredményét nem szabad vizsgálni.
+        val opened = resolver.openInputStream(uri)?.use { stream ->
             BitmapFactory.decodeStream(BufferedInputStream(stream), null, bounds)
-        } ?: return null
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            true
+        } ?: throw FileNotFoundException("openInputStream returned null: $uri")
+        check(opened)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw IOException("Unsupported image format (mime=${bounds.outMimeType}): $uri")
+        }
         val options = BitmapFactory.Options().apply {
             inSampleSize = BitmapScale.sampleSize(bounds.outWidth, bounds.outHeight, maxEdge)
             inPreferredConfig = Bitmap.Config.ARGB_8888
@@ -25,15 +66,22 @@ object PhotoDecoder {
         }
         val decoded = resolver.openInputStream(uri)?.use { stream ->
             BitmapFactory.decodeStream(BufferedInputStream(stream), null, options)
-        } ?: return null
-        val orientation = resolver.openInputStream(uri)?.use { stream ->
-            ExifInterface(BufferedInputStream(stream)).getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
-                ExifInterface.ORIENTATION_NORMAL
-            )
-        } ?: ExifInterface.ORIENTATION_NORMAL
+        } ?: throw IOException("BitmapFactory could not decode: $uri")
+        val orientation = try {
+            resolver.openInputStream(uri)?.use { stream ->
+                ExifInterface(BufferedInputStream(stream)).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
+        } catch (e: Exception) {
+            Log.w(TAG, "EXIF read failed for $uri", e)
+            ExifInterface.ORIENTATION_NORMAL
+        }
         return limitEdge(rotate(decoded, orientation), maxEdge)
     }
+
+    private const val TAG = "RoncsAuto"
 
     fun decodeFile(file: File, maxEdge: Int): Bitmap? {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
