@@ -32,9 +32,94 @@ object HungarianPlate {
     fun findBest(text: String): Match? {
         if (text.isBlank()) return null
         val spaced = text.replace('\n', ' ')
-        return listOfNotNull(bestIn(text), if (spaced != text) bestIn(spaced) else null)
+        val exact = listOfNotNull(bestIn(text), if (spaced != text) bestIn(spaced) else null)
             .maxByOrNull { it.score }
+        if (exact != null && exact.score >= EXACT_TRUSTED) return exact
+        val tolerant = findTolerant(text)
+        return listOfNotNull(exact, tolerant).maxByOrNull { it.score }
     }
+
+    /**
+     * Tűrő keresés gyenge OCR-hez: összefűzi a szomszédos szövegdarabokat
+     * ("IUX" + "-868"), levágja az EU-sáv "H" betűjét, és pozíció szerint javítja
+     * a betű/szám keveredést (0/O, 1/I, 8/B, 5/S, 2/Z, 6/G). Betűt betűre
+     * (pl. I/L) nem cserél. Pontszáma mindig kisebb a pontos találatokénál.
+     */
+    fun findTolerant(text: String): Match? {
+        val prepared = normalize(text)
+        val tokens = tokenRegex.findAll(prepared).toList()
+        var best: Match? = null
+        for (i in tokens.indices) {
+            val builder = StringBuilder()
+            for (j in i until minOf(tokens.size, i + MAX_TOKENS)) {
+                builder.append(tokens[j].value)
+                if (builder.length > 8) break
+                val joined = builder.toString()
+                val variants = mutableListOf(joined)
+                if (joined.length in 7..8 && joined[0] == 'H') variants += joined.substring(1)
+                for (candidate in variants) {
+                    val match = tolerantMatch(
+                        candidate,
+                        tokens[i].range.first,
+                        tokens[j].range.last + 1,
+                        j - i
+                    ) ?: continue
+                    if (best == null || match.score > best.score) best = match
+                }
+            }
+        }
+        return best
+    }
+
+    private fun tolerantMatch(raw: String, start: Int, end: Int, penalty: Int): Match? {
+        return when (raw.length) {
+            6 -> fixPattern(raw, "LLLDDD")?.let { (fixed, corrections) ->
+                Match("${fixed.substring(0, 3)}-${fixed.substring(3)}", fixed, Kind.CLASSIC, start, end,
+                    TOLERANT_BASE - CORRECTION_COST * corrections - penalty)
+            }
+            7 -> fixPattern(raw, "LLLLDDD")?.let { (fixed, corrections) ->
+                val first = fixed.substring(0, 2)
+                if (!validNew(first) || first[0] == 'H') return null
+                Match("$first ${fixed.substring(2, 4)}-${fixed.substring(4)}", fixed, Kind.NEW, start, end,
+                    TOLERANT_BASE - CORRECTION_COST * corrections - penalty)
+            }
+            else -> null
+        }
+    }
+
+    /** L = betű, D = számjegy; legfeljebb [MAX_CORRECTIONS] betű/szám csere. */
+    internal fun fixPattern(raw: String, pattern: String): Pair<String, Int>? {
+        if (raw.length != pattern.length) return null
+        val out = StringBuilder(raw.length)
+        var corrections = 0
+        for (k in raw.indices) {
+            val ch = raw[k]
+            val wantLetter = pattern[k] == 'L'
+            val fixed = when {
+                wantLetter && ch in 'A'..'Z' -> ch
+                !wantLetter && ch in '0'..'9' -> ch
+                wantLetter -> letterFix[ch]?.also { corrections++ } ?: return null
+                else -> digitFix[ch]?.also { corrections++ } ?: return null
+            }
+            out.append(fixed)
+        }
+        if (corrections > MAX_CORRECTIONS) return null
+        return out.toString() to corrections
+    }
+
+    private val tokenRegex = Regex("[A-Z0-9]+")
+    private val letterFix = mapOf(
+        '0' to 'O', '1' to 'I', '2' to 'Z', '4' to 'A', '5' to 'S', '6' to 'G', '7' to 'T', '8' to 'B'
+    )
+    private val digitFix = mapOf(
+        'O' to '0', 'Q' to '0', 'I' to '1', 'L' to '1', 'J' to '1', 'T' to '7',
+        'Z' to '2', 'S' to '5', 'B' to '8', 'G' to '6', 'A' to '4'
+    )
+    private const val EXACT_TRUSTED = 30
+    private const val TOLERANT_BASE = 20
+    private const val CORRECTION_COST = 5
+    private const val MAX_CORRECTIONS = 2
+    private const val MAX_TOKENS = 4
 
     fun findAll(text: String): List<Match> = collect(normalize(text))
 
@@ -128,6 +213,8 @@ object HungarianPlate {
             Kind.OLD -> 22
         }
         if (separated) score += 5
+        // Az új sorozat messze van a H-tól: a "HIUX-868"-féle olvasat az EU-sáv H betűje.
+        if (kind == Kind.NEW && canonical[0] == 'H') score -= 40
         val lineStart = text.lastIndexOf('\n', start - 1).let { if (it < 0) 0 else it + 1 }
         val lineEnd = text.indexOf('\n', end).let { if (it < 0) text.length else it }
         val line = text.substring(lineStart, lineEnd).trim()
@@ -141,7 +228,7 @@ object HungarianPlate {
         for (ch in text) {
             when (ch) {
                 '–', '—', '−', '‐' -> builder.append('-')
-                '\u00A0' -> builder.append(' ')
+                '\u00A0', '\u00B7', '\u2022', '|' -> builder.append(' ')
                 else -> builder.append(ch.toString().uppercase(Locale.ROOT))
             }
         }
