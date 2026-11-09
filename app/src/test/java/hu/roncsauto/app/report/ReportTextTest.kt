@@ -30,6 +30,14 @@ class ReportTextTest {
     }
 
     @Test
+    fun includesVehicleWhenPresent() {
+        assertEquals(
+            "Elhagyott / roncs autó. Rendszám: IUX-868. Jármű: RENAULT TWINGO, 1999. A műszaki vizsga lejárata: 2026.01.24. (lejárt).",
+            ReportText.build("IUX-868", LocalDate.of(2026, 1, 24), today, "RENAULT TWINGO, 1999")
+        )
+    }
+
+    @Test
     fun plateAloneDoesNotCreateADate() {
         val text = ReportText.build("ABC-123", null, today)
         assertFalse(Regex("""\d{4}""").containsMatchIn(text))
@@ -42,12 +50,17 @@ class ReportTextTest {
         assertEquals("https://magyarorszag.hu/jszp_szuf", HandoffText.JSZP_URL)
         assertFalse(HandoffText.JAROKELO_URL.contains("description="))
         assertFalse(HandoffText.JSZP_URL.contains("description="))
-        val withPhoto = HandoffText.jarokeloInstructions(true)
-        assertTrue(withPhoto.contains("kézzel"))
-        assertTrue(withPhoto.contains("nem küldi el"))
+        assertEquals("IUX868", HandoffText.jszpClipboardPlate("IUX-868"))
+        assertTrue(HandoffText.JSZP_PASTE_HINT.contains("Gépjármű rendszáma"))
+        assertTrue(HandoffText.JSZP_PASTE_HINT.contains("KERESÉS"))
+        val withPhoto = HandoffText.jarokeloInstructions(true, false)
         assertTrue(withPhoto.contains("vágólapon"))
-        val withoutPhoto = HandoffText.jarokeloInstructions(false)
+        assertTrue(withPhoto.contains("nem fogad előtöltött"))
+        assertTrue(withPhoto.contains("nem küldi el"))
+        val saved = HandoffText.jarokeloInstructions(true, true)
+        assertTrue(saved.contains("Pictures/RoncsAuto"))
+        val withoutPhoto = HandoffText.jarokeloInstructions(false, false)
         assertTrue(withoutPhoto.contains("Nincs kiválasztott fotó"))
-        assertFalse(withoutPhoto.contains("feltöltöttük"))
+        assertEquals("Elhagyott / roncs autó", ReportText.subject())
     }
 }

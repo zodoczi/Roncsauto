@@ -20,4 +20,6 @@ object ReportText {
         }
         return base
     }
+
+    fun subject(): String = "Elhagyott / roncs autó"
 }
