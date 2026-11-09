@@ -2,9 +2,11 @@
   if (!window.__roncs) return JSON.stringify({ok:false, reason:'no_common'});
   var plate = window.__roncsPlate || '';
   var list = __roncs.docs();
-  var el = __roncs.byLabel(list, 'gépjármű rendszáma'.normalize('NFC'))
+  var needle1 = 'g\u00e9pj\u00e1rm\u0171 rendsz\u00e1ma';
+  var needle2 = 'rendsz\u00e1m';
+  var el = __roncs.byLabel(list, needle1)
         || __roncs.byLabel(list, 'gepjarmu rendszama')
-        || __roncs.byLabel(list, 'rendszám'.normalize('NFC'))
+        || __roncs.byLabel(list, needle2)
         || __roncs.byLabel(list, 'rendszam')
         || __roncs.byCss(list, [
              'input[name*="rendszam" i]',
