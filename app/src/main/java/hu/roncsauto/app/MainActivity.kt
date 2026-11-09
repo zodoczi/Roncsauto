@@ -22,6 +22,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -47,6 +48,7 @@ import hu.roncsauto.app.photo.PhotoDecoder
 import hu.roncsauto.app.photo.PhotoStore
 import hu.roncsauto.app.plate.HungarianPlate
 import hu.roncsauto.app.report.HandoffText
+import hu.roncsauto.app.web.BrowserActivity
 import hu.roncsauto.app.report.ReportText
 import hu.roncsauto.app.wizard.ReportSession
 import hu.roncsauto.app.wizard.WizardStep
@@ -85,6 +87,21 @@ class MainActivity : AppCompatActivity() {
             } else {
                 toast("Kamera nélkül a saját fotó használható.")
             }
+        }
+
+
+    private val browserLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != RESULT_OK) return@registerForActivityResult
+            val text = result.data?.getStringExtra(BrowserActivity.EXTRA_PAGE_TEXT) ?: return@registerForActivityResult
+            val plate = session.plate ?: return@registerForActivityResult
+            val parsed = InspectionExpiry.analyze(text, plate, LocalDate.now())
+            confirmInspection(
+                parsed,
+                "Beágyazott böngészőből beolvasott JSZP-szöveg.\n\n",
+                plate,
+                JszpVehicle.describe(text)
+            )
         }
 
     private val requestWrite =
@@ -386,8 +403,15 @@ class MainActivity : AppCompatActivity() {
         copyText(forClipboard)
         MaterialAlertDialogBuilder(this)
             .setTitle("JSZP")
-            .setMessage(HandoffText.JSZP_PASTE_HINT)
-            .setPositiveButton("Megnyitás") { _, _ ->
+            .setMessage(HandoffText.JSZP_PASTE_HINT + "\n\nAz alkalmazáson belüli böngésző megpróbálja beilleszteni a rendszámot. Belépést nem végzünk helyetted.")
+            .setPositiveButton("Megnyitás az appban") { _, _ ->
+                val intent = Intent(this, BrowserActivity::class.java)
+                    .putExtra(BrowserActivity.EXTRA_MODE, BrowserActivity.MODE_JSZP)
+                    .putExtra(BrowserActivity.EXTRA_URL, HandoffText.JSZP_URL)
+                    .putExtra(BrowserActivity.EXTRA_PLATE, plate)
+                browserLauncher.launch(intent)
+            }
+            .setNeutralButton("Külső böngésző") { _, _ ->
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HandoffText.JSZP_URL)))
             }
             .setNegativeButton("Mégse", null)
@@ -546,8 +570,17 @@ class MainActivity : AppCompatActivity() {
         val hasPhoto = sharedPhotoFile().exists()
         MaterialAlertDialogBuilder(this)
             .setTitle("Járókelő")
-            .setMessage(HandoffText.jarokeloInstructions(hasPhoto, session.photoSaved))
-            .setPositiveButton("Megnyitás") { _, _ ->
+            .setMessage(HandoffText.jarokeloInstructions(hasPhoto, session.photoSaved) +
+                "\n\nAz appbeli böngésző megpróbálja beilleszteni a leírást, és a mentett fotót ajánlja csatolásra. Küldést nem indít.")
+            .setPositiveButton("Megnyitás az appban") { _, _ ->
+                val intent = Intent(this, BrowserActivity::class.java)
+                    .putExtra(BrowserActivity.EXTRA_MODE, BrowserActivity.MODE_JAROKELO)
+                    .putExtra(BrowserActivity.EXTRA_URL, HandoffText.JAROKELO_URL)
+                    .putExtra(BrowserActivity.EXTRA_DESCRIPTION, report)
+                if (hasPhoto) intent.putExtra(BrowserActivity.EXTRA_PHOTO_PATH, sharedPhotoFile().absolutePath)
+                startActivity(intent)
+            }
+            .setNeutralButton("Külső böngésző") { _, _ ->
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HandoffText.JAROKELO_URL)))
             }
             .setNegativeButton("Mégse", null)

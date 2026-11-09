@@ -1,0 +1,23 @@
+<!DOCTYPE html><html lang="hu"><head><meta charset="utf-8"><title>JSZP mock</title></head>
+<body>
+  <h1>Jármű Szolgáltatási Platform (mock)</h1>
+  <label for="plateField">Gépjármű rendszáma</label>
+  <input id="plateField" name="rendszam" type="text" />
+  <button type="button" id="kereses">KERESÉS</button>
+  <div id="result" style="display:none">
+    <h2>Nyilvántartott rendszám</h2>
+    <p id="resPlate">IUX868</p>
+    <h2>Műszaki érvényesség</h2>
+    <p>2026.01.24.</p>
+    <h2>Gyártmány</h2><p>RENAULT</p>
+    <h2>Kereskedelmi leírás</h2><p>TWINGO</p>
+    <h2>Gyártás éve</h2><p>1999</p>
+  </div>
+  <script>
+    document.getElementById('kereses').onclick=function(){
+      document.getElementById('result').style.display='block';
+      document.getElementById('resPlate').textContent=
+        (document.getElementById('plateField').value||'').replace(/[^A-Za-z0-9]/g,'').toUpperCase();
+    };
+  </script>
+</body></html>
