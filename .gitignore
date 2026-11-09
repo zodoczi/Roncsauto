@@ -16,3 +16,5 @@ build_log.txt
 google-services.json
 testdata/
 app/src/androidTest/assets/
+
+testdata/v2_screens/

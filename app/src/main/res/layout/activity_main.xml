@@ -4,6 +4,51 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
+    <LinearLayout
+        android:id="@+id/stepBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="#111111"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/step1"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="1. Rendszám"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/step2"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="2. JSZP"
+            android:textColor="#88FFFFFF"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/step3"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:text="3. Járókelő"
+            android:textColor="#88FFFFFF"
+            android:textSize="13sp" />
+    </LinearLayout>
+
     <FrameLayout
         android:id="@+id/previewContainer"
         android:layout_width="0dp"
@@ -12,7 +57,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomPanel"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@id/stepBar">
 
         <androidx.camera.view.PreviewView
             android:id="@+id/previewView"
@@ -37,7 +82,7 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintHeight_default="wrap"
-        app:layout_constraintHeight_max="340dp"
+        app:layout_constraintHeight_max="380dp"
         app:layout_constraintStart_toStartOf="parent">
 
         <LinearLayout
@@ -46,89 +91,224 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:id="@+id/tvPlate"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:paddingBottom="4dp"
-                android:text="Rendszám: —"
-                android:textColor="#FFFFFF"
-                android:textSize="22sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:id="@+id/tvPhoto"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="Fotó: nincs"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
-
-            <TextView
-                android:id="@+id/tvInspection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:paddingBottom="8dp"
-                android:text="Műszaki: nincs megadva"
-                android:textColor="#FFFFFF"
-                android:textSize="14sp" />
-
+            <!-- STEP 1 -->
             <LinearLayout
+                android:id="@+id/panelPlate"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="horizontal">
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvPlate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingBottom="4dp"
+                    android:text="Rendszám: -"
+                    android:textColor="#FFFFFF"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvPhoto"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingBottom="8dp"
+                    android:text="Fotó: nincs"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnPickPhoto"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:text="Saját fotó" />
+
+                    <Button
+                        android:id="@+id/btnCamera"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1"
+                        android:text="Kamera" />
+
+                    <Button
+                        android:id="@+id/btnManual"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:text="Kézzel" />
+                </LinearLayout>
 
                 <Button
-                    android:id="@+id/btnPickPhoto"
-                    android:layout_width="0dp"
+                    android:id="@+id/btnSaveGallery"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
-                    android:layout_weight="1"
-                    android:text="Saját fotó" />
+                    android:layout_marginTop="8dp"
+                    android:enabled="false"
+                    android:text="Fotó mentése a galériába" />
 
                 <Button
-                    android:id="@+id/btnCamera"
-                    android:layout_width="0dp"
+                    android:id="@+id/btnNextFromPlate"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:layout_weight="1"
-                    android:text="Kamera" />
-
-                <Button
-                    android:id="@+id/btnManual"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
-                    android:layout_weight="1"
-                    android:text="Kézzel" />
+                    android:layout_marginTop="8dp"
+                    android:enabled="false"
+                    android:text="Tovább a JSZP-hez" />
             </LinearLayout>
 
-            <Button
-                android:id="@+id/btnJszp"
+            <!-- STEP 2 -->
+            <LinearLayout
+                android:id="@+id/panelJszp"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:enabled="false"
-                android:text="Lekérdezés a JSZP-n" />
+                android:orientation="vertical"
+                android:visibility="gone">
 
-            <Button
-                android:id="@+id/btnInspection"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:enabled="false"
-                android:text="Műszaki dátum megadása" />
+                <TextView
+                    android:id="@+id/tvJszpPlate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingBottom="4dp"
+                    android:text="Rendszám: -"
+                    android:textColor="#FFFFFF"
+                    android:textSize="20sp"
+                    android:textStyle="bold" />
 
-            <Button
-                android:id="@+id/btnJarokelo"
+                <TextView
+                    android:id="@+id/tvInspection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:paddingBottom="8dp"
+                    android:text="Műszaki: nincs megadva"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp"
+                    android:text="Nyisd meg a JSZP-t, illeszd be a rendszámot, majd opcionálisan add meg a műszaki dátumot."
+                    android:textColor="#CCFFFFFF"
+                    android:textSize="13sp" />
+
+                <Button
+                    android:id="@+id/btnJszp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="JSZP megnyitása" />
+
+                <Button
+                    android:id="@+id/btnInspection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Műszaki dátum megadása" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnBackFromJszp"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:text="Vissza" />
+
+                    <Button
+                        android:id="@+id/btnSkipJszp"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:text="Kihagyás" />
+
+                    <Button
+                        android:id="@+id/btnNextFromJszp"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1"
+                        android:text="Tovább" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- STEP 3 -->
+            <LinearLayout
+                android:id="@+id/panelJarokelo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:enabled="false"
-                android:text="Bejelentés a Járókelőn" />
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:id="@+id/tvSummary"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingBottom="8dp"
+                    android:text=""
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp" />
+
+                <Button
+                    android:id="@+id/btnJarokelo"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Járókelő megnyitása" />
+
+                <Button
+                    android:id="@+id/btnShare"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Fotó megosztása" />
+
+                <Button
+                    android:id="@+id/btnSaveGalleryStep3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Fotó mentése a galériába" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal">
+
+                    <Button
+                        android:id="@+id/btnBackFromJarokelo"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:text="Vissza" />
+
+                    <Button
+                        android:id="@+id/btnRestart"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_weight="1"
+                        android:text="Kezdés újra" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 
